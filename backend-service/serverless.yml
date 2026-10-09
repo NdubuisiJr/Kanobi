@@ -1,0 +1,225 @@
+service: project-kanobi
+useDotenv: true
+
+package:
+  include:
+    - dist/**
+    - node_modules/**
+    - package.json
+  exclude:
+    - ./**
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  profile: ndubuisi-profile
+  region: eu-west-1
+  stage: ${opt:stage, 'dev'}
+  timeout: 30
+  environment:
+    NODE_ENV: ${env:NODE_ENV}
+    STAGE_NAME: ${sls:stage}
+    SERVICE_TABLE: ${env:SERVICE_TABLE}
+    DYNAMODB_ENDPOINT: ${env:DYNAMODB_ENDPOINT}
+    S3_ENDPOINT: ${env:S3_ENDPOINT}
+    AWS_DEPLOY_REGION: ${env:AWS_DEPLOY_REGION}
+    AWS_KEY: ${env:AWS_KEY}
+    AWS_SECRET: ${env:AWS_SECRET}
+    BUCKET_NAME: ${env:BUCKET_NAME}
+    region: ${env:AWS_DEPLOY_REGION}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action: "*"
+          Resource: "*"
+
+plugins:
+  - serverless-offline
+
+functions:
+  default:
+    handler: dist/index.ping
+    events:
+      - http:
+          method: GET
+          path: /
+
+  GetProjects:
+    handler: dist/api/project/project.GetProjects
+    events:
+      - http:
+          method: GET
+          path: /project
+          cors:
+            origin: "*"
+            allowCredentials: false
+  CreateProject:
+    handler: dist/api/project/project.CreateProject
+    events:
+      - http:
+          method: POST
+          path: /project
+          cors:
+            origin: "*"
+            allowCredentials: false
+  GetOneProject:
+    handler: dist/api/project/project.GetOneProject
+    events:
+      - http:
+          method: GET
+          path: /project/{id}
+          cors:
+            origin: "*"
+            allowCredentials: false
+  GetProjectCost:
+    handler: dist/api/project/project.GetProjectCost
+    events:
+      - http:
+          method: GET
+          path: /project/cost/{id}
+          cors:
+            origin: "*"
+            allowCredentials: false
+  PutProject:
+    handler: dist/api/project/project.PutProject
+    events:
+      - http:
+          method: PUT
+          path: /project/{id}
+          cors:
+            origin: "*"
+
+            allowCredentials: false
+  DeleteProject:
+    handler: dist/api/project/project.DeleteProject
+    events:
+      - http:
+          method: DELETE
+          path: /project/{id}
+          cors:
+            origin: "*"
+            allowCredentials: false
+
+  CreateModel:
+    handler: dist/api/model/model.CreateModel
+    events:
+      - http:
+          method: POST
+          path: /model/{projectId}
+          cors:
+            origin: "*"
+            allowCredentials: false
+  GetModels:
+    handler: dist/api/model/model.GetModels
+    events:
+      - http:
+          method: GET
+          path: /model/{projectId}
+          cors:
+            origin: "*"
+            allowCredentials: false
+  GetOneModel:
+    handler: dist/api/model/model.GetOneModel
+    events:
+      - http:
+          method: GET
+          path: /model/{projectId}/{modelId}
+          cors:
+            origin: "*"
+            allowCredentials: false
+  PutModel:
+    handler: dist/api/model/model.PutModel
+    events:
+      - http:
+          method: PUT
+          path: /model/{projectId}/{modelId}
+          cors:
+            origin: "*"
+            allowCredentials: false
+  PutModelAPI:
+    handler: dist/api/model/model.PutModelAPI
+    events:
+      - http:
+          method: PUT
+          path: /model-api/{projectId}/{modelId}
+          cors:
+            origin: "*"
+            allowCredentials: false
+  CreateModelRelations:
+    handler: dist/api/model/model.CreateModelRelations
+    events:
+      - http:
+          method: POST
+          path: /model-relations/{projectId}/{modelId}
+          cors:
+            origin: "*"
+            allowCredentials: false
+  DeleteModelRelations:
+    handler: dist/api/model/model.DeleteModelRelations
+    events:
+      - http:
+          method: PUT
+          path: /model-relations/{projectId}/{modelId}
+          cors:
+            origin: "*"
+            allowCredentials: false
+  DeleteModel:
+    handler: dist/api/model/model.DeleteModel
+    events:
+      - http:
+          method: DELETE
+          path: /model/{projectId}/{modelId}
+          cors:
+            origin: "*"
+            allowCredentials: false
+
+  TriggerDeployment:
+    handler: dist/api/deployment/deployment.TriggerDeployment
+    events:
+      - http:
+          method: PUT
+          path: /deployment
+          cors:
+            origin: "*"
+            allowCredentials: false
+  GetDeployment:
+    handler: dist/api/deployment/deployment.GetDeployment
+    events:
+      - http:
+          method: GET
+          path: /deployment/{projectId}
+          cors:
+            origin: "*"
+            allowCredentials: false
+
+  projectCreatedHandler:
+    handler: dist/api/project/projectEvent.projectCreatedHandler
+  projectDeletedHandler:
+    handler: dist/api/project/projectEvent.projectDeletedHandler
+  modelCreatedHandler:
+    handler: dist/api/model/modelEvent.modelCreatedHandler
+  modelDeletedHandler:
+    handler: dist/api/model/modelEvent.modelDeletedHandler
+  modelUpdatedHandler:
+    handler: dist/api/model/modelEvent.modelUpdatedHandler
+  deploymentTriggeredHandler:
+    handler: dist/api/deployment/deploymentEvent.deploymentTriggeredHandler
+
+resources:
+  Resources:
+    KanobiTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: KanobiTable
+        AttributeDefinitions:
+          - AttributeName: pk
+            AttributeType: S
+          - AttributeName: sk
+            AttributeType: S
+        KeySchema:
+          - AttributeName: pk
+            KeyType: HASH
+          - AttributeName: sk
+            KeyType: RANGE
+        BillingMode: "PAY_PER_REQUEST"

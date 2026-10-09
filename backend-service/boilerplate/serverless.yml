@@ -1,0 +1,17 @@
+useDotenv: true
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  environment:
+    NODE_ENV: ${env:NODE_ENV}
+    STAGE_NAME: ${sls:stage}
+
+  iam:
+    role:
+      statements:
+
+functions:
+
+resources:
+  Resources:
