@@ -70,7 +70,7 @@ Coverage must stay at 100% in both packages. Treat these as part of the definiti
 4. `deploymentTriggeredHandler` downloads `<projectId>/` from S3 (to `./.downloads` in dev, `/tmp` otherwise), zips it, uploads the zip, and starts the CodeBuild project `sls-code-deploy` with an inline buildspec (build, `docs.js` swagger generation, `sls deploy --stage prod`). `deployment.ts` reads the deployment status back through CodeBuild/CloudWatch logs and exports Swagger from API Gateway (`src/utils/infraHelper.ts`).
 5. Deleting a project deletes its S3 folder and the CloudFormation stack (it empties the stack's buckets first).
 
-**Environment.** Variables are read from `.env` (`useDotenv`, gitignored): `NODE_ENV`, `SERVICE_TABLE`, `DYNAMODB_ENDPOINT`, `S3_ENDPOINT`, `AWS_DEPLOY_REGION`, `AWS_KEY`, `AWS_SECRET`, `BUCKET_NAME`. With `NODE_ENV=dev`, the DynamoDB and S3 clients use the local endpoints. AWS calls such as CodeBuild, CloudFormation and Cost Explorer still go to real AWS.
+**Environment.** Variables are read from `.env` (`useDotenv`, gitignored; copy `backend-service/.env.example`): `NODE_ENV`, `SERVICE_TABLE`, `DYNAMODB_ENDPOINT`, `S3_ENDPOINT`, `AWS_DEPLOY_REGION`, `AWS_KEY`, `AWS_SECRET`, `BUCKET_NAME`. With `NODE_ENV=dev`, the DynamoDB and S3 clients use the local endpoints. AWS calls such as CodeBuild, CloudFormation and Cost Explorer still go to real AWS.
 
 Responses go through `ResponseManager` (`src/utils/responseManager.ts`), and logging goes through `logInfo`/`logError` (`src/utils/logger.ts`).
 
