@@ -48,6 +48,8 @@ export default function ModelManager({
   const [relToDelete, setRelToDelete] = useState<Relationship[]>([]);
 
   const addModel = async () => {
+    // Unreachable from the UI (the button is disabled); kept as a guard.
+    /* v8 ignore if -- @preserve */
     if (!newModelName.trim()) return;
 
     const newModel = {
@@ -202,6 +204,8 @@ export default function ModelManager({
         if (m.id === modelId) {
           const newProps = m.relations.map((r, i) => {
             if (i === index) {
+              // Never true today: the selects only edit "modelId" and "relationship" (see TODO.md).
+              /* v8 ignore next 8 -- @preserve */
               if (
                 field == "relatedModel" &&
                 r.modelId &&
@@ -225,9 +229,12 @@ export default function ModelManager({
   // Delete property
   const deleteRelationship = async (modelId: string, index: number) => {
     const model = models.find((x) => x.id == modelId);
+    // Unreachable from the UI: ids and indexes come from the rendered list.
+    /* v8 ignore if -- @preserve */
     if (!model) return;
 
     const relation = model.relations[index];
+    /* v8 ignore if -- @preserve */
     if (!relation) return;
 
     const res = await fetch(
@@ -253,8 +260,12 @@ export default function ModelManager({
 
   const pushModelUpdate = async (modelId: string) => {
     const model = models.find((x) => x.id === modelId);
+    // Unreachable from the UI: the id comes from the rendered list.
+    /* v8 ignore if -- @preserve */
     if (!model) return;
 
+    // relToDelete is never populated today (see editRelationship / TODO.md).
+    /* v8 ignore if -- @preserve */
     if (relToDelete.length > 0) {
       await fetch(
         `https://avw4j9bkn7.execute-api.eu-west-1.amazonaws.com/staging/model-relations/${project.id}/${modelId}`,

@@ -5,3 +5,5 @@ dist/
 todo.txt
 .serverless/
 test.ts
+coverage
+.downloads

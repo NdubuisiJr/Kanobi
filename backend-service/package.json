@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
     "dev": "rm -rf dist && tsc && node dist/index.js",
     "build": "rm -rf dist && tsc",
-    "start": "npm run build && sls offline -s dev"
+    "start": "npm run build && sls offline -s dev",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit -p . && tsc -p test"
   },
   "keywords": [],
   "author": "",
@@ -16,9 +19,14 @@
     "@types/archiver": "^6.0.3",
     "@types/aws-lambda": "^8.10.136",
     "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "aws-sdk-client-mock": "^4.1.0",
     "serverless": "^4.14.3",
     "serverless-iam-roles-per-function": "^3.2.0",
-    "serverless-offline": "^14.4.0"
+    "serverless-offline": "^14.4.0",
+    "typescript": "~5.8.3",
+    "vitest": "^5.0.5"
   },
   "dependencies": {
     "@aws-sdk/client-api-gateway": "^3.839.0",

@@ -220,13 +220,12 @@ export const emptyBucket = async (bucket: string) => {
       })
     );
 
-    const objectsToDelete =
-      (listResp.Versions || [])
-        .concat(listResp.DeleteMarkers || [])
-        .map((obj) => ({
-          Key: obj.Key!,
-          VersionId: obj.VersionId,
-        })) || [];
+    const objectsToDelete = (listResp.Versions || [])
+      .concat(listResp.DeleteMarkers || [])
+      .map((obj) => ({
+        Key: obj.Key!,
+        VersionId: obj.VersionId,
+      }));
 
     if (objectsToDelete.length > 0) {
       await s3.send(

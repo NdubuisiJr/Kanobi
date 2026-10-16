@@ -1,0 +1,79 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+Kanobi is a backend-as-a-service generator. A user creates a **project**, defines **models** (properties, which CRUD APIs to generate, relations), then triggers a **deployment**. Kanobi generates a Serverless Framework TypeScript service for that project and deploys it to AWS. The repo has two independent packages with no shared code and no root package.json:
+
+- `backend-service/`: the Kanobi control-plane API (Serverless Framework, AWS Lambda, TypeScript, DynamoDB, S3)
+- `frontend-service/`: the management UI (React 19, Vite, React Router v7 data routers, Tailwind v4)
+
+## Commands
+
+Backend (`cd backend-service`):
+- `npm run build`: `rm -rf dist && tsc` (output goes to `dist/`, and serverless handlers point at `dist/...`)
+- `npm start`: build, then run locally with `sls offline -s dev`
+- Deploy: `sls deploy -s <stage>` (serverless.yml uses AWS profile `ndubuisi-profile`, region `eu-west-1`)
+- `npm test` / `npm run test:coverage` / `npm run typecheck` (source + tests)
+
+Frontend (`cd frontend-service`):
+- `npm run dev` / `npm run build` (`tsc -b && vite build`) / `npm run lint` / `npm run preview`
+- `npm test` / `npm run test:coverage`
+- Installs need `legacy-peer-deps` (set in `.npmrc`) because `swagger-ui-react` declares support only for React below 19.
+
+## Tests
+
+Both packages use Vitest with v8 coverage and enforce a **100% threshold** on lines, branches, functions and statements, so any uncovered new code fails `test:coverage`. Run a single file with `npx vitest run <path>` or a single test with `-t "<name>"`.
+
+- Backend tests live in `backend-service/test/`, which mirrors `src/` and is kept outside `tsconfig` `include` so they are not compiled into `dist/`. AWS SDK v3 clients are mocked with `aws-sdk-client-mock` (`mockClient(DynamoDBDocumentClient)`, `mockClient(S3Client)`, …), and `aws-sdk` v2 and the `EventHub` with `vi.mock`. Codegen tests run the real ts-morph against `boilerplate/src/indexTemplate.ts`. Env vars (including `TZ=UTC`) are set in `vitest.config.mts`. Handlers read `SERVICE_TABLE ?? ""`, so handler suites run under `describe.each` with it set and unset.
+- Frontend tests sit next to the code they cover (`*.test.tsx`), with jsdom and Testing Library. Render route components through `renderWithRouter` (`src/test/utils.tsx`) with a stub loader/action, and stub `fetch` (and `location` for `reload`) with `vi.stubGlobal`.
+- Truly unreachable guards are excluded with `/* v8 ignore if -- @preserve */` (the `@preserve` is required so the TS transform keeps the comment). Known bugs, including the ones those hints cover, are tracked in `TODO.md`.
+
+CI (`.github/workflows/ci.yml`) runs on pushes to `main` and on PRs, with Node 22. It has one job per package:
+- **Backend:** `npm ci` → `typecheck` → `build` → `test:coverage`
+- **Frontend:** `npm ci` → `lint` (non-blocking until the existing errors are fixed) → `build` → `test:coverage`
+
+Coverage reports are uploaded as artifacts. A coverage threshold failure fails the job.
+
+### Testing rules (mandatory)
+
+Coverage must stay at 100% in both packages. Treat these as part of the definition of done for any change:
+
+1. **Every code change ships with tests in the same change.** New or modified functions, branches, handlers, components, loaders and actions must have tests written or updated alongside them, not deferred to later.
+2. **Run `npm run test:coverage` in each package you touched before you call the work done**, and make sure it passes. In the backend, also run `npm run typecheck`. A threshold failure is a failing build: fix it by adding tests, never by lowering thresholds, widening `coverage.exclude`, or deleting tests.
+3. **Cover behaviour, not just lines.** For each branch, test both outcomes: success and failure paths, validation errors (400), not-found (404), unexpected errors (500), empty and missing data, and optional fields present and absent. Assert on outputs and side effects (response body, DynamoDB/S3 command inputs, published events, rendered UI, fetch calls), not just that code ran.
+4. **`v8 ignore` hints are a last resort.** Use one only for code that genuinely can't be reached (e.g. a guard the UI or types make impossible). Add a comment explaining why and, if the unreachability points to a bug, an entry in `TODO.md`. Never use a hint to skip code that is merely hard to test; refactor it or mock the dependency instead.
+5. **Bug fixes start with a test.** Write a test that reproduces the bug (it fails first), then fix it. If the bug is listed in `TODO.md`, update the test that documents the old behaviour and tick off or remove the entry.
+6. **Keep tests isolated and deterministic.** No real network or AWS calls: mock SDK clients with `aws-sdk-client-mock`/`vi.mock`, and stub `fetch` and globals with `vi.stubGlobal`. Use fake timers or `vi.setSystemTime` for time-dependent code, and temp directories for filesystem work. Reset mocks and env stubs between tests (`restoreMocks` is on; call `vi.unstubAllEnvs()`/`vi.unstubAllGlobals()` where you stub).
+7. **Where tests go:**
+   - Backend tests go in `backend-service/test/` at the same relative path as the source (`src/utils/foo.ts` → `test/utils/foo.test.ts`).
+   - Frontend tests sit next to the component as `*.test.ts(x)`.
+   - Shared helpers go in `test/helpers.ts` (backend) and `src/test/utils.tsx` (frontend).
+8. **New source files are covered automatically** (the coverage `include` is `src/**`), so a new file without tests will fail the threshold. Don't add exclusions for new source files.
+
+## Backend architecture
+
+**Handlers.** `src/api/{project,model,deployment}/` each hold:
+- `<name>.ts`: HTTP Lambda handlers. Each exported function is registered by name in `serverless.yml`, so a new endpoint has to be added there as well.
+- `<name>.dto.ts`: zod schemas and types for request validation and DynamoDB items
+- `<name>Event.ts`: async event handlers that do the heavy work (codegen, S3, CloudFormation, CodeBuild)
+
+**Event flow.** HTTP handlers write to DynamoDB, then call `EventHub.Get().publish({type, payload})` (`src/utils/eventhub.ts`). When `NODE_ENV=dev`, `LocalEventHub` calls the handler in-process. Otherwise, `LambdaEventHub` invokes the Lambda `project-kanobi-${STAGE_NAME}-${handler.name}` asynchronously. A new event therefore needs to be registered in both hub classes **and** declared as a function in `serverless.yml`, and the function name in serverless.yml must equal the handler's JS name.
+
+**Single-table DynamoDB.** The table name comes from `SERVICE_TABLE`, with `pk`/`sk` keys. All items for a project share `pk = "pr_<projectId>"`. Sort keys use the prefixes in `src/utils/keys.ts`: `pr_` for the project row, `ml_` for models, `dp_` for deployments. Each item also has `entityType`. Use `getPutOperators` (`src/utils/dynamodbHelpers.ts`) to build UpdateExpressions.
+
+**Code generation pipeline (the core of the system):**
+1. `backend-service/boilerplate/` is the template for generated services. At runtime it is read from the **S3 bucket** (`BUCKET_NAME`) under the `boilerplate/` prefix, not from local disk, so local edits to it take effect only after you upload it to the bucket.
+2. `projectCreatedHandler` copies `boilerplate/` to `<projectId>/` in S3. It uses ts-morph to produce `src/index.ts` from the imports in `indexTemplate.ts`. It also rewrites the generated `serverless.yml` (service name from `getServiceName`, a per-project files bucket, IAM statements, `Service`/`Project` tags used for cost lookup).
+3. `modelCreated/Updated/DeletedHandler` (`modelEvent.ts`) use `src/utils/codeBuilder.ts`, which clones the generic handlers from `indexTemplate.ts` (`Getone`, `Get`, `Post`, …) into `index.ts` as `<Method><ModelName>` functions via ts-morph. They also add or remove matching `functions` entries and per-model DynamoDB tables (`getTableName`) in the project's `serverless.yml`, then upload both files back to S3.
+4. `deploymentTriggeredHandler` downloads `<projectId>/` from S3 (to `./.downloads` in dev, `/tmp` otherwise), zips it, uploads the zip, and starts the CodeBuild project `sls-code-deploy` with an inline buildspec (build, `docs.js` swagger generation, `sls deploy --stage prod`). `deployment.ts` reads the deployment status back through CodeBuild/CloudWatch logs and exports Swagger from API Gateway (`src/utils/infraHelper.ts`).
+5. Deleting a project deletes its S3 folder and the CloudFormation stack (it empties the stack's buckets first).
+
+**Environment.** Variables are read from `.env` (`useDotenv`, gitignored): `NODE_ENV`, `SERVICE_TABLE`, `DYNAMODB_ENDPOINT`, `S3_ENDPOINT`, `AWS_DEPLOY_REGION`, `AWS_KEY`, `AWS_SECRET`, `BUCKET_NAME`. With `NODE_ENV=dev`, the DynamoDB and S3 clients use the local endpoints. AWS calls such as CodeBuild, CloudFormation and Cost Explorer still go to real AWS.
+
+Responses go through `ResponseManager` (`src/utils/responseManager.ts`), and logging goes through `logInfo`/`logError` (`src/utils/logger.ts`).
+
+## Frontend architecture
+
+Routes are defined in `src/main.tsx` with `createBrowserRouter`. Each page folder (`Login/`, `Project/`, `ProjectDetail/`) pairs a component with `loader.ts`/`action.ts`, and data fetching and mutations happen in those files, not in components. Actions dispatch on a hidden `action` form field (`post`/`put`/`delete`). The backend base URL (a staging API Gateway endpoint) is **hardcoded** in each loader and action. Login is a hardcoded client-side check.

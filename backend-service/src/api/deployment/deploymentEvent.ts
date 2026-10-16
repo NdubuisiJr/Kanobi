@@ -40,6 +40,8 @@ export const deploymentTriggeredHandler = async (
   const zipKey = projectFolder + ".zip";
 
   const response = await zipFolder(cwd, localZipPath);
+  // zipFolder currently resolves true or rejects; keep the guard in case that changes.
+  /* v8 ignore if -- @preserve */
   if (!response) {
     logError(deploymentTriggeredHandler.name, "Failed to Zip artifact");
     throw "Failed to Zip artifact";

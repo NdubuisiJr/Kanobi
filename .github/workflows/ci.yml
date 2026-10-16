@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  backend:
+    name: Backend (build + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-service
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend-service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check source and tests
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # Fails if coverage drops below the 100% thresholds in vitest.config.mts.
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: backend-coverage
+          path: backend-service/coverage/
+          retention-days: 14
+
+  frontend:
+    name: Frontend (build + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-service
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend-service/package-lock.json
+
+      # legacy-peer-deps is set in frontend-service/.npmrc (swagger-ui-react peer range).
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Non-blocking until the existing no-explicit-any errors are fixed (see TODO.md).
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build
+
+      # Fails if coverage drops below the 100% thresholds in vitest.config.ts.
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: frontend-coverage
+          path: frontend-service/coverage/
+          retention-days: 14
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v5
+        with:
+          name: frontend-dist
+          path: frontend-service/dist/
+          retention-days: 7
